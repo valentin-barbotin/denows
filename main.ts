@@ -22,13 +22,31 @@ const BufferToObject = (obj: ArrayBuffer) => {
     return message;
 }
 
+const getAllClients = (playerUUID: string) => {
+    return Array.from(clients.entries()).filter(([key, client]) => key !== playerUUID);
+}
+
+const syncWithAll = async (position: string, playerUUID: string) => {
+    const newPlayerPosition = {
+        player: playerUUID,
+        position,
+    }
+    const message: Message = {
+        type: "receivePosition",
+        data: JSON.stringify(newPlayerPosition),
+    };
+    const payload = objectToBuffer(message);
+    getAllClients(playerUUID).forEach(([key, client]) => {
+        client.send(payload);
+    });
+}
+
 const handler = (request: Request) => {
     const { socket, response } = Deno.upgradeWebSocket(request);
     const uuid = crypto.randomUUID();
     log.debug(`Generate new uuid for new client: ${uuid}`);
     clients.set(uuid, socket);
     socket.onopen = () => {
-        log.debug("New client ...");
         {
             const response: Message = {
                 type: "welcome",
@@ -43,16 +61,15 @@ const handler = (request: Request) => {
                 data: `New client ${uuid}, ${clients.size} clients connected`,
             }
             const payload = objectToBuffer(message);
-            Array.from(clients.entries()).forEach(([key, client]) => {
-                if (key !== uuid) {
-                    client.send(payload);
-                }
+            const allClients = getAllClients(uuid);
+            allClients.forEach(([key, client]) => {
+                client.send(payload);
             });
         }
     };
     socket.onmessage = (e) => {
         const message: Message = BufferToObject(e.data);
-        log.debug(message.data);
+        // log.debug(message.data);
 
         let data: Message = {
             type: "",
@@ -65,6 +82,15 @@ const handler = (request: Request) => {
                     data: `${clients.size} clients connected`,
                 };
                 break;
+            
+            case "syncPosition":
+                data = {
+                    type: "res_syncPosition",
+                    data: message.data,
+                };
+                
+                syncWithAll(message.data, uuid);
+                break;
         
             default:
                 return
@@ -75,7 +101,7 @@ const handler = (request: Request) => {
     };
     socket.onclose = () => {
         clients.delete(uuid);
-        log.warning("WebSocket has been closed.")
+        log.warning(`WebSocket has been closed by ${uuid}.`)
     };
     socket.onerror = (e: any) => console.error("WebSocket error:", e);
     return response;
