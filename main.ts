@@ -1,13 +1,11 @@
 import { serve } from "https://deno.land/std@0.117.0/http/server.ts";
 import logger from './utils/logger.ts';
+import { Message, IMessageNewUserJoined, IMessageSync } from './interfaces/Message.ts';
+import { IUser } from './interfaces/User.ts';
 const log = logger.getLogger("WebSocket");
 
 const clients = new Map<string, WebSocket>();
 
-interface Message {
-    type: string;
-    data: string;
-}
 
 const objectToBuffer = (obj: Message): ArrayBuffer => {
     const encoder = new TextEncoder();
@@ -26,17 +24,13 @@ const getAllClients = (playerUUID: string) => {
     return Array.from(clients.entries()).filter(([key, client]) => key !== playerUUID);
 }
 
-const syncWithAll = async (position: string, playerUUID: string) => {
-    const newPlayerPosition = {
-        player: playerUUID,
-        position,
-    }
-    const message: Message = {
-        type: "receivePosition",
-        data: JSON.stringify(newPlayerPosition),
-    };
+const syncWithAll = async (message: Message, playerUUID: string) => {
+
+    message.id = playerUUID;
+    log.critical(message);
     const payload = objectToBuffer(message);
     getAllClients(playerUUID).forEach(([key, client]) => {
+        log.debug(`Send ${message.type} to ${key} from ${playerUUID}`);
         client.send(payload);
     });
 }
@@ -44,63 +38,49 @@ const syncWithAll = async (position: string, playerUUID: string) => {
 const handler = (request: Request) => {
     const { socket, response } = Deno.upgradeWebSocket(request);
     const uuid = crypto.randomUUID();
-    log.debug(`Generate new uuid for new client: ${uuid}`);
+    log.info(`Generate new uuid for new client: ${uuid}`);
     clients.set(uuid, socket);
     socket.onopen = () => {
-        {
-            const response: Message = {
-                type: "welcome",
-                data: "Welcome to the chat",
-            };
-            const payload = objectToBuffer(response);
-            socket.send(payload);
-        }
-        {
-            const message: Message = {
-                type: "newClient",
-                data: `New client ${uuid}, ${clients.size} clients connected`,
-            }
-            const payload = objectToBuffer(message);
-            const allClients = getAllClients(uuid);
-            allClients.forEach(([key, client]) => {
-                client.send(payload);
-            });
-        }
+        log.debug(`New client ${uuid}, ${clients.size} client(s) connected`);
     };
     socket.onmessage = (e) => {
         const message: Message = BufferToObject(e.data);
         // log.debug(message.data);
 
-        let data: Message = {
-            type: "",
-            data: "",
+        let payload: Message = {
+            type: message.type,
+            data: {},
         };
         switch (message.type) {
-            case "getAll":
-                data = {
-                    type: "res_getAll",
-                    data: `${clients.size} clients connected`,
-                };
-                break;
-            
-            case "syncPosition":
-                data = {
-                    type: "res_syncPosition",
+            case "userSyncPos":
+                payload = {
+                    type: "userSyncPos",
                     data: message.data,
                 };
-                
-                syncWithAll(message.data, uuid);
+                syncWithAll(payload, uuid);
+                break;
+            case "login":
+                log.warning(message.data)
+                const { user, password } = message.data as IMessageNewUserJoined;
+                payload = {
+                    type: "userJoined",
+                    data: user, //`${clients.size} clients connected`
+                };
+                syncWithAll(payload, uuid);
                 break;
         
             default:
                 return
         }
-
-        const payload = objectToBuffer(data);
-        socket.send(payload);
     };
     socket.onclose = () => {
+        const payload: Message = {
+            id: uuid,
+            type: 'userQuit',
+            data: {},
+        };
         clients.delete(uuid);
+        syncWithAll(payload, uuid);
         log.warning(`WebSocket has been closed by ${uuid}.`)
     };
     socket.onerror = (e: any) => console.error("WebSocket error:", e);
@@ -111,5 +91,5 @@ log.info("Starting server ...");
 log.info(`HTTP webserver running. Access it at: http://localhost:5000/`);
 await serve(
     handler,
-    { addr: ":5000" }
+    { addr: "0.0.0.0:5000" }
 );
