@@ -67,6 +67,20 @@ const handler = (request: Request) => {
                     data: user, //`${clients.size} clients connected`
                 };
                 syncWithAll(payload, uuid);
+                
+                getAllClients(uuid).forEach(([key, WebSocket]) => {
+                    const newUser: IUser = {
+                        name: "dummy",
+                    }    
+                    payload = {
+                        id: key,
+                        type: "userJoined",
+                        data: newUser,
+                    }   
+                    const _payload = objectToBuffer(payload);
+                    console.log(uuid);
+                    socket.send(_payload);
+                })
                 break;
         
             default:
