@@ -1,11 +1,13 @@
+// deno-lint-ignore-file no-case-declarations
 import { serve } from "https://deno.land/std@0.117.0/http/server.ts";
 import logger from './utils/logger.ts';
 import { Message, IMessageNewUserJoined, IMessageSync } from './interfaces/Message.ts';
 import { IUser } from './interfaces/User.ts';
+import User from './user.ts';
+
 const log = logger.getLogger("WebSocket");
 
-const clients = new Map<string, WebSocket>();
-
+const clients = new Map<string, [WebSocket, User]>();
 
 const objectToBuffer = (obj: Message): ArrayBuffer => {
     const encoder = new TextEncoder();
@@ -21,15 +23,13 @@ const BufferToObject = (obj: ArrayBuffer) => {
 }
 
 const getAllClients = (playerUUID: string) => {
-    return Array.from(clients.entries()).filter(([key, client]) => key !== playerUUID);
+    return Array.from(clients.entries()).filter(([key, [client, user]]) => key !== playerUUID);
 }
 
-const syncWithAll = async (message: Message, playerUUID: string) => {
-
-    message.id = playerUUID;
+const syncWithAll = (message: Message, playerUUID: string) => {
     log.critical(message);
     const payload = objectToBuffer(message);
-    getAllClients(playerUUID).forEach(([key, client]) => {
+    getAllClients(playerUUID).forEach(([key, [client, user]]) => {
         log.debug(`Send ${message.type} to ${key} from ${playerUUID}`);
         client.send(payload);
     });
@@ -39,48 +39,46 @@ const handler = (request: Request) => {
     const { socket, response } = Deno.upgradeWebSocket(request);
     const uuid = crypto.randomUUID();
     log.info(`Generate new uuid for new client: ${uuid}`);
-    clients.set(uuid, socket);
     socket.onopen = () => {
         log.debug(`New client ${uuid}, ${clients.size} client(s) connected`);
     };
     socket.onmessage = (e) => {
         const message: Message = BufferToObject(e.data);
-        // log.debug(message.data);
 
-        let payload: Message = {
+        const payload: Message = {
             type: message.type,
             data: {},
         };
         switch (message.type) {
             case "userSyncPos":
-                payload = {
-                    type: "userSyncPos",
-                    data: message.data,
-                };
+                payload.data  = message.data as IMessageSync;
+                payload.data.id = uuid;
                 syncWithAll(payload, uuid);
                 break;
             case "login":
                 log.warning(message.data)
                 const { user, password } = message.data as IMessageNewUserJoined;
-                payload = {
+                const userObj = new User(uuid, user.name.trim()); 
+                const payloadToSync = {
                     type: "userJoined",
-                    data: user, //`${clients.size} clients connected`
+                    data: [userObj], //`${clients.size} clients connected`
                 };
-                syncWithAll(payload, uuid);
+
+                syncWithAll(payloadToSync, uuid);
+                clients.set(uuid, [socket, userObj]);
+
+                const allUsers: User[] = getAllClients(uuid).map(([key, [WebSocket, user]]) => user);
                 
-                getAllClients(uuid).forEach(([key, WebSocket]) => {
-                    const newUser: IUser = {
-                        name: "dummy",
-                    }    
-                    payload = {
-                        id: key,
-                        type: "userJoined",
-                        data: newUser,
-                    }   
-                    const _payload = objectToBuffer(payload);
-                    console.log(uuid);
-                    socket.send(_payload);
-                })
+                if (allUsers.length === 0) return;
+
+                const __payload = {
+                    type: "userJoined",
+                    data: allUsers,
+                }
+
+                log.debug(__payload)
+                const _payload = objectToBuffer(__payload);
+                socket.send(_payload);
                 break;
         
             default:
@@ -88,10 +86,14 @@ const handler = (request: Request) => {
         }
     };
     socket.onclose = () => {
+        const currentUser = clients.get(uuid);
+        if (!currentUser) {
+            log.error(`${uuid} not found in clients`);
+            return;
+        }
         const payload: Message = {
-            id: uuid,
             type: 'userQuit',
-            data: {},
+            data: currentUser[1],
         };
         clients.delete(uuid);
         syncWithAll(payload, uuid);
@@ -102,7 +104,7 @@ const handler = (request: Request) => {
 };
 
 log.info("Starting server ...");
-log.info(`HTTP webserver running. Access it at: http://localhost:5000/`);
+log.info(`HTTP webserver running. Access it at: http://0.0.0.0:5000/`);
 await serve(
     handler,
     { addr: "0.0.0.0:5000" }

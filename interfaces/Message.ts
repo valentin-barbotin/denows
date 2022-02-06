@@ -2,11 +2,14 @@
 /* eslint-disable import/no-unresolved */
 import { IUser } from './User.ts';
 
+interface _IMessageID {
+    id: string;
+}
 interface MessageData {
     [k: string]: any,
 }
 
-interface IMessageSync {
+interface IMessageSync extends _IMessageID {
     position: [number, number, number],
     rotation: number[],
 }
@@ -17,9 +20,8 @@ interface IMessageNewUserJoined  {
 }
 
 interface Message {
-    id?: string,
     type: string;
-    data: IMessageNewUserJoined | IMessageSync | {[k: string]: any};
+    data: IMessageNewUserJoined | IMessageSync | MessageData;
     password?: string;
 }
 
