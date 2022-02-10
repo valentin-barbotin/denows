@@ -3,9 +3,11 @@
 
 interface IUser {
     id?: string; 
-    name: string;
     _id?: string;
+    name: string;
     _name?: string;
+    model: string;
+    _model?: string;
 }
 
 export type {

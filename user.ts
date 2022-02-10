@@ -8,9 +8,13 @@ class User {
 
     private _name: string;
 
-    constructor(id: string, name: string) {
+    private _model: string;
+
+    constructor(id: string, user: IUser) {
+        console.warn(user);
         this._id = id;
-        this._name = name;
+        this._name = user._name?.trim() ?? 'null';
+        this._model = user._model ?? 'default';
     }
     
     public stringify() {
@@ -18,10 +22,9 @@ class User {
     }
 
     static fromObject(user: IUser): User | null {
-        if (!user._id) return null;
-        if (!user._name) return null;
+        if (!user._id || !user._name || !user.model) return null;
 
-        return new User(user._id ?? '', user._name ?? '');
+        return new User(user._id, user);
     }
 
     public get id() {
@@ -38,6 +41,14 @@ class User {
 
     public set name(name: string) {
         this._name = name;
+    }
+
+    public get model() {
+        return this._model;
+    }
+
+    public set model(model: string) {
+        this._model = model;
     }
 }
 

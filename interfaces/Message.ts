@@ -17,6 +17,7 @@ interface IMessageSync extends _IMessageID {
 interface IMessageNewUserJoined  {
     user: IUser,
     password: string,
+    model: string;
 }
 
 interface Message {
