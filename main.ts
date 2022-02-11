@@ -1,7 +1,7 @@
 // deno-lint-ignore-file no-case-declarations
 import { serve } from "https://deno.land/std@0.117.0/http/server.ts";
 import logger from './utils/logger.ts';
-import { Message, IMessageNewUserJoined, IMessageSync } from './interfaces/Message.ts';
+import { Message, IMessageNewUserJoined, IMessageSync, MessageData } from './interfaces/Message.ts';
 import { IUser } from './interfaces/User.ts';
 import User from './user.ts';
 
@@ -27,7 +27,6 @@ const getAllClients = (playerUUID: string) => {
 }
 
 const syncWithAll = (message: Message, playerUUID: string) => {
-    log.critical(message);
     const payload = objectToBuffer(message);
     getAllClients(playerUUID).forEach(([key, [client, user]]) => {
         log.debug(`Send ${message.type} to ${key} from ${playerUUID}`);
@@ -55,10 +54,19 @@ const handler = (request: Request) => {
                 payload.data.id = uuid;
                 syncWithAll(payload, uuid);
                 break;
+            case "bullet":
+                payload.data  = message.data as MessageData;
+                syncWithAll(payload, uuid);
+                break;
+            case "animation":
+                payload.data  = message.data as MessageData;
+                payload.data.id = uuid;
+                syncWithAll(payload, uuid);
+                break;
             case "login":
                 log.warning(message.data)
                 const { user, password } = message.data as IMessageNewUserJoined;
-                const userObj = new User(uuid, user.name.trim()); 
+                const userObj = new User(uuid, user); 
                 const payloadToSync = {
                     type: "userJoined",
                     data: [userObj], //`${clients.size} clients connected`
@@ -76,7 +84,7 @@ const handler = (request: Request) => {
                     data: allUsers,
                 }
 
-                log.debug(__payload)
+                log.warning(__payload)
                 const _payload = objectToBuffer(__payload);
                 socket.send(_payload);
                 break;
