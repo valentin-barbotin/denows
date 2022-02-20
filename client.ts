@@ -1,3 +1,4 @@
+//DO NOT USE
 console.log("Connecting to server ...");
 
 interface Message {

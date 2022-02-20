@@ -37,9 +37,9 @@ const syncWithAll = (message: Message, playerUUID: string) => {
 const handler = (request: Request) => {
     const { socket, response } = Deno.upgradeWebSocket(request);
     const uuid = crypto.randomUUID();
-    log.info(`Generate new uuid for new client: ${uuid}`);
+    log.debug(`Generate new uuid for new client: ${uuid}`);
     socket.onopen = () => {
-        log.debug(`New client ${uuid}, ${clients.size} client(s) connected`);
+        log.info(`New client ${uuid}, ${clients.size} client(s) connected`);
     };
     socket.onmessage = (e) => {
         const message: Message = BufferToObject(e.data);
@@ -64,9 +64,9 @@ const handler = (request: Request) => {
                 syncWithAll(payload, uuid);
                 break;
             case "login":
-                log.warning(message.data)
                 const { user, password } = message.data as IMessageNewUserJoined;
                 const userObj = new User(uuid, user); 
+                log.debug(user);
                 const payloadToSync = {
                     type: "userJoined",
                     data: [userObj], //`${clients.size} clients connected`
@@ -84,7 +84,7 @@ const handler = (request: Request) => {
                     data: allUsers,
                 }
 
-                log.warning(__payload)
+                log.debug(__payload);
                 const _payload = objectToBuffer(__payload);
                 socket.send(_payload);
                 break;
@@ -107,13 +107,14 @@ const handler = (request: Request) => {
         syncWithAll(payload, uuid);
         log.warning(`WebSocket has been closed by ${uuid}.`)
     };
-    socket.onerror = (e: any) => console.error("WebSocket error:", e);
+    socket.onerror = (e: any) => log.error("WebSocket error:", e);
     return response;
 };
 
+const port = 5000;
 log.info("Starting server ...");
-log.info(`HTTP webserver running. Access it at: http://0.0.0.0:5000/`);
+log.info(`HTTP webserver running. Access it at: http://0.0.0.0:${port}/`);
 await serve(
     handler,
-    { addr: "0.0.0.0:5000" }
-);
+    { addr: `0.0.0.0:${port}` }
+    );    
